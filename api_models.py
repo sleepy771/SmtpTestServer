@@ -52,6 +52,7 @@ class Model(object):
 
         def __init__(self):
             self._properties = {}
+            self.__init_properties()
 
         def _put(self, prop):
             if prop.name in self._properties:
@@ -61,6 +62,9 @@ class Model(object):
         @property
         def list(self):
             return tuple((prop for prop in self._properties.values()))
+
+        def __init_properties(self):
+            pass
 
     @classmethod
     def get_meta(cls):
@@ -94,25 +98,3 @@ class ModelProvider(object):
             load_module = '%s.api_models.%s' % (module, model_name)
             __import__(load_module)
         pass
-
-
-class Loader(object):
-
-    def __init__(self, data, model):
-        self._properties = []
-        self._values = []
-        self._model = model
-        self._data = data
-
-    def parse_top(self):
-        if self._properties:
-            element = self._properties.pop()
-            if element.is_simple():
-                self._model[element.name] = self._values.pop()
-            else:
-                self._properties.append(element)
-                prop_values = self._values.pop()
-                self._values.append(None)
-                for prop in element.get_model().properties:
-                    self._properties.append(prop)
-                    self._values.append(prop_values[prop.name])

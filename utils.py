@@ -1,5 +1,15 @@
 
 
+def singleton(cls):
+    SINGLETONS = {}
+
+    def create_or_get(*args, **kwargs):
+        if cls not in SINGLETONS:
+            SINGLETONS[cls] = cls(*args, **kwargs)
+        return SINGLETONS[cls]
+    return create_or_get
+
+
 class Importer(object):
 
     def __init__(self, convention):
