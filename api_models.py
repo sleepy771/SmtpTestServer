@@ -95,6 +95,6 @@ class ModelProvider(object):
         """
         if model not in self._models:
             module, model_name = model.rsplit('.', 1)
-            load_module = '%s.api_models.%s' % (module, model_name)
+            load_module = '%s.api.%s' % (module, model_name)
             __import__(load_module)
         pass

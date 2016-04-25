@@ -1,4 +1,4 @@
-#!mailer/bin/python
+#!env/bin/python
 
 """Script for initializing python mail server."""
 

@@ -29,3 +29,9 @@ class MarshallerProvider(_Marshaller):
         if cls not in MarshallerProvider.__MARSHALLER_DICT__:
             return
         del MarshallerProvider.__MARSHALLER_DICT__
+
+    @staticmethod
+    def get_for(cls):
+        if hasattr(cls, 'get_marshaller'):
+            return cls.get_marshaller().get()
+        raise Exception('Undefined marshaller')

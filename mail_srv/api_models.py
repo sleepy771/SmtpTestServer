@@ -1,4 +1,4 @@
-from api_models.models import ApiModel, SimpleProperty, DateTimeProperty, ListOfModelsProperty
+from api.models import ApiModel, SimpleProperty, DateTimeProperty, ListOfModelsProperty
 
 
 class MessagePart(ApiModel):

@@ -1,5 +1,5 @@
 """Base mail message models. """
-from sqlalchemy import Column, Integer, String, DateTime, LargeBinary
+from sqlalchemy import Column, Integer, String, DateTime, LargeBinary, ForeignKey
 from settings import Base
 
 
@@ -9,6 +9,7 @@ class Message(Base):
     __tablename__ = 'message'
 
     id = Column(Integer, primary_key=True)
+    mailbox_id = Column(Integer, ForeignKey('mailboxes.id'))
     sender = Column(String)
     recipients = Column(String)
     subject = Column(String(191))
@@ -32,3 +33,11 @@ class MessagePart(Base):
     body = Column(LargeBinary)
     size = Column(Integer)
     created_at = Column(DateTime)
+
+
+class MailBox(Base):
+    __tablename__ = 'mailboxes'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(length=191), nullable=False)
+    description = Column(String, nullable=True)

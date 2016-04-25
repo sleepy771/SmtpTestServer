@@ -1,9 +1,11 @@
 # """Base module with controllers"""
-from settings import app, Session
-from models import Message
-from email.utils import formataddr
-from StringIO import StringIO
 import json
+from StringIO import StringIO
+
+from models import Message
+from settings import app, Session
+
+from flask import request
 
 
 @app.route('/inbox/')
@@ -28,6 +30,14 @@ def show_message(id):
     msg_dct["size"] = message.size
     msg_dct["recipients"] = create_recipients(message.recipients)
     return msg_dct
+
+
+@app.route('/send/', methods=['POST'])
+def send_message():
+    # session = Session()
+    post_data = request.data
+    message_data = json.loads(post_data)
+
 
 
 def create_message(message):

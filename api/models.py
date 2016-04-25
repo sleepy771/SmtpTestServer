@@ -1,22 +1,19 @@
 from datetime import datetime
 
 from abc import ABCMeta, abstractmethod, abstractproperty
-from api_models.marshallers import MarshallerProvider
-
-from utils import load_arg, tuplify
 from constraints import InInterval, InSet, NotEmpty, NotNull
+from utils import load_arg, tuplify
 
 
 class Property(object):
     __metaclass__ = ABCMeta
 
     def __init__(self, type_, *args, **kwargs):
-        constraints = load_arg(0, 'constraints', default_=tuple(), *args, **kwargs)
-        name = load_arg(1, 'name', *args, **kwargs)
-        getter = load_arg(2, 'get', *args, **kwargs)
-        setter = load_arg(3, 'set', *args, **kwargs)
+        name = load_arg(0, 'name', *args, **kwargs)
+        getter = load_arg(1, 'get', *args, **kwargs)
+        setter = load_arg(2, 'set', *args, **kwargs)
 
-        self._constraints = constraints or tuple()
+        self._constraints = kwargs.pop('constraints', default=tuple())
         self._name = name
         self._type = type_
         self._getter = getter
@@ -59,20 +56,25 @@ class SimpleProperty(Property):
     def __init__(self, type_, *args, **kwargs):
         constraints = []
         if type_ in (int, float, long):
-            _max = load_arg(5, 'max_', *args, **kwargs)
-            _min = load_arg(4, 'min_', *args, **kwargs)
+            _max = load_arg(4, 'max_', *args, **kwargs)
+            _min = load_arg(3, 'min_', *args, **kwargs)
             if _max or _min:
                 interval_constraint = InInterval(max_=_max, min_=_min, type_=InInterval.CLOSED)
-        in_set = load_arg(6, 'in_', *args, **kwargs)
+                constraints.append(interval_constraint)
+        in_set = load_arg(5, 'in_', *args, **kwargs)
         if in_set:
             _set_constraint = InSet(set_=in_set)
-        _empty = load_arg(7, 'empty', default_=False, *args, **kwargs)
+            constraints.append(_set_constraint)
+        _empty = load_arg(6, 'empty', default_=False, *args, **kwargs)
         if not _empty and type_ in (str, list, tuple, dict, set):
             empty_constraint = NotEmpty()
-        _null = load_arg(8, 'nullable', default_=True, *args, **kwargs)
+            constraints.append(empty_constraint)
+        _null = load_arg(7, 'nullable', default_=True, *args, **kwargs)
         if not _null:
             null_constraint = NotNull()
-        _custom_constraints = load_arg()
+            constraints.append(null_constraint)
+        _custom_constraints = load_arg(8, 'constraints', default_=tuple(), *args, **kwargs)
+        constraints.extend(_custom_constraints)
         kwargs['constraints'] = constraints
         super(SimpleProperty, self).__init__(type_, *args, **kwargs)
 
@@ -87,16 +89,16 @@ class MarshallableProperty(Property):
 
     def __init__(self, type_, *args, **kwargs):
         constraints = []
-        _marshaller = load_arg(4, 'marshaller', *args, **kwargs)
+        _marshaller = load_arg(3, 'marshaller', *args, **kwargs)
         if not _marshaller:
             raise Exception('Can not create marshaller property without marshaller')
         if type(_marshaller) is not type or issubclass(_marshaller, MarshallableProperty):
             raise Exception('Expected marshaller type is subclass of MarshallerProvider')
         self._marshaller = _marshaller
-        _null = load_arg(5, 'nullable', default_=True *args, **kwargs)
+        _null = load_arg(4, 'nullable', default_=True *args, **kwargs)
         if not _null:
             constraints.append(NotNull())
-        _in_set = load_arg(6, 'in_', default_=tuple(), *args, **kwargs)
+        _in_set = load_arg(5, 'in_', default_=tuple(), *args, **kwargs)
         if _in_set:
             constraints.append(InSet(set_=_in_set))
         _custom_constraints = load_arg(6, 'constraints', *args, **kwargs)
@@ -104,7 +106,6 @@ class MarshallableProperty(Property):
             constraints.extend(tuplify(_custom_constraints))
         kwargs['constraints'] = constraints
         super(MarshallableProperty, self).__init__(type_, *args, **kwargs)
-
 
     def unmarshall(self, value):
         return self._marshaller.get().unmarshall(value)
@@ -133,7 +134,7 @@ class ModelProperty(Property):
     def __init__(self, type_, constraints=None):
         if not issubclass(type_, ApiModel):
             raise Exception('Only ApiModels could be ModelProperty types')
-        super(ModelProperty, self).__init__(type_, constraints)
+        super(ModelProperty, self).__init__(type_, constraints=constraints or tuple())
 
     def check_type(self, value):
         return isinstance(value, self._type)
