@@ -1,25 +1,26 @@
 from datetime import datetime
 
 from abc import ABCMeta, abstractmethod, abstractproperty
+from api_models.marshallers import MarshallerProvider
+
+from utils import load_arg, tuplify
+from constraints import InInterval, InSet, NotEmpty, NotNull
 
 
 class Property(object):
     __metaclass__ = ABCMeta
 
     def __init__(self, type_, *args, **kwargs):
-        constraints = kwargs.pop('constraints', None)
-        name = kwargs.pop('name', None)
-        if not constraints:
-            if len(args) > 0:
-                constraints = args[0]
-        if not name:
-            if len(args) > 1:
-                name = args[1]
-        nullable = kwargs.pop('nullable', None)
+        constraints = load_arg(0, 'constraints', default_=tuple(), *args, **kwargs)
+        name = load_arg(1, 'name', *args, **kwargs)
+        getter = load_arg(2, 'get', *args, **kwargs)
+        setter = load_arg(3, 'set', *args, **kwargs)
 
         self._constraints = constraints or tuple()
         self._name = name
         self._type = type_
+        self._getter = getter
+        self._setter = setter
 
     @abstractmethod
     def check_type(self, value):
@@ -29,6 +30,22 @@ class Property(object):
     def is_simple(self):
         return True
 
+    @property
+    def has_getter(self):
+        return self._getter is not None
+
+    @property
+    def has_setter(self):
+        return self._setter is not None
+
+    @property
+    def use_name(self):
+        return True if self._name else False
+
+    @property
+    def name(self):
+        return self._name
+
     def is_valid(self, value):
         if self.check_type(value):
             for constraint in self._constraints:
@@ -37,17 +54,27 @@ class Property(object):
             return True
         return False
 
-    def convert(self, dct, name):
-        return dct
-
-    def to_dict(self, dct, name):
-        return dct
-
 
 class SimpleProperty(Property):
-
-    def __init__(self, type_, constraints=None, name=None):
-        super(SimpleProperty, self).__init__(type_, constraints, name)
+    def __init__(self, type_, *args, **kwargs):
+        constraints = []
+        if type_ in (int, float, long):
+            _max = load_arg(5, 'max_', *args, **kwargs)
+            _min = load_arg(4, 'min_', *args, **kwargs)
+            if _max or _min:
+                interval_constraint = InInterval(max_=_max, min_=_min, type_=InInterval.CLOSED)
+        in_set = load_arg(6, 'in_', *args, **kwargs)
+        if in_set:
+            _set_constraint = InSet(set_=in_set)
+        _empty = load_arg(7, 'empty', default_=False, *args, **kwargs)
+        if not _empty and type_ in (str, list, tuple, dict, set):
+            empty_constraint = NotEmpty()
+        _null = load_arg(8, 'nullable', default_=True, *args, **kwargs)
+        if not _null:
+            null_constraint = NotNull()
+        _custom_constraints = load_arg()
+        kwargs['constraints'] = constraints
+        super(SimpleProperty, self).__init__(type_, *args, **kwargs)
 
     def check_type(self, value):
         return type(value) is self._type
@@ -57,18 +84,33 @@ class SimpleProperty(Property):
 
 
 class MarshallableProperty(Property):
-    __metaclass__ = ABCMeta
 
-    def __init__(self, type_, constraints=None):
-        super(MarshallableProperty, self).__init__(type_, constraints)
+    def __init__(self, type_, *args, **kwargs):
+        constraints = []
+        _marshaller = load_arg(4, 'marshaller', *args, **kwargs)
+        if not _marshaller:
+            raise Exception('Can not create marshaller property without marshaller')
+        if type(_marshaller) is not type or issubclass(_marshaller, MarshallableProperty):
+            raise Exception('Expected marshaller type is subclass of MarshallerProvider')
+        self._marshaller = _marshaller
+        _null = load_arg(5, 'nullable', default_=True *args, **kwargs)
+        if not _null:
+            constraints.append(NotNull())
+        _in_set = load_arg(6, 'in_', default_=tuple(), *args, **kwargs)
+        if _in_set:
+            constraints.append(InSet(set_=_in_set))
+        _custom_constraints = load_arg(6, 'constraints', *args, **kwargs)
+        if _custom_constraints:
+            constraints.extend(tuplify(_custom_constraints))
+        kwargs['constraints'] = constraints
+        super(MarshallableProperty, self).__init__(type_, *args, **kwargs)
 
-    @abstractmethod
+
     def unmarshall(self, value):
-        pass
+        return self._marshaller.get().unmarshall(value)
 
-    @abstractmethod
     def marshall(self, value):
-        pass
+        return self._marshaller.get().marshall(value)
 
     def convert(self, dct, name):
         value = dct[name]
@@ -88,7 +130,6 @@ class MarshallableProperty(Property):
 
 
 class ModelProperty(Property):
-
     def __init__(self, type_, constraints=None):
         if not issubclass(type_, ApiModel):
             raise Exception('Only ApiModels could be ModelProperty types')
@@ -130,11 +171,10 @@ class DateTimeProperty(MarshallableProperty):
 
 
 class ListOfModelsProperty(Property):
-
-    def __init__(self, type_, constraints=None):
+    def __init__(self, type_, *args, **kwargs):
         if not issubclass(type_, ApiModel):
             raise Exception('Only ApiModels could be ModelProperty types')
-        super(ListOfModelsProperty, self).__init__(type_, constraints)
+        super(ListOfModelsProperty, self).__init__(type_, *args, **kwargs)
 
     def check_type(self, values):
         if type(values) is not list:
@@ -180,19 +220,29 @@ class ApiModel(object):
 
     @classmethod
     def _properties(cls):
+        """
+        :returns: defined model properties
+        :rtype: __generator<[str, Property]>
+        """
         return ((name, prop) for name, prop in cls.__dict__.iteritems() if isinstance(prop, Property))
 
     @classmethod
     def load(cls, dct):
         unmarshalled = cls()
         for name, prop in cls._properties():
+            if prop.use_name:
+                name = prop.name
             if name not in dct:
                 raise Exception('Property does not exist')
             if not prop.is_simple:
-                prop.convert(dct)
+                prop.convert(dct, name)
             if prop.is_valid(dct[name]):
                 raise Exception('Invalid property value')
-            setattr(unmarshalled, name, dct[name])
+            if prop.has_setter:
+                setter = getattr(unmarshalled, prop.setter)
+                setter(dct[name])
+            else:
+                setattr(unmarshalled, name, dct[name])
         return unmarshalled
 
     @classmethod
@@ -201,12 +251,14 @@ class ApiModel(object):
             raise Exception('Invalid type')
         marshaled = {}
         for name, prop in cls._properties():
+            if prop.use_name:
+                name = prop.name
             value = getattr(obj, name, ApiModel.__EMPTY__)
-            if value is ApiModel.__EMPTY__:
-                raise Exception('Value never assigned')
+            if value is ApiModel.__EMPTY__ and not prop.is_nullable:
+                raise Exception('Undefined property %s' % name)
             marshaled[name] = value
             if not prop.is_valid(value):
-                raise Exception('Invalid value')
+                raise Exception('Invalid value for property %s' % name)
             if not prop.is_simple:
                 prop.to_dict(marshaled, name)
         return marshaled

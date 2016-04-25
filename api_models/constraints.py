@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+from utils import load_arg
 
 
 class Constraint(object):
@@ -27,12 +28,6 @@ class NotEmpty(Constraint):
         return True if value else False
 
 
-class NonZero(Constraint):
-
-    def is_valid(self, value):
-        return True if value else False
-
-
 class InInterval(Constraint):
     OPEN = 'o'
     CLOSED = 'c'
@@ -40,22 +35,21 @@ class InInterval(Constraint):
     RIGHT_OPEN = 'r'
 
     def __init__(self, *args, **kwargs):
-        max_ = kwargs.pop('max', None)
-        min_ = kwargs.pop('min', None)
-        type_ = kwargs.pop('type_', InInterval.CLOSED)
-
-        if len(args) > 0:
-            min_ = args[0]
-        if len(args) > 1:
-            max_ = args[1]
-        if len(args) > 2:
-            type_ = args[3]
+        """
+        :param min\_: minimal value (inclusive or exclusive depending on type_)
+        :param max\_: maximal value (exclusiveness is dependant on type_ flag)
+        if no value or null is provided condition is always true for upper ound
+        :type: int|long|float
+        """
+        max_ = load_arg(1, 'max_', *args, **kwargs)
+        min_ = load_arg(0, 'min_', *args, **kwargs)
+        type_ = load_arg(2, 'type_', *args, **kwargs)
 
         self._min = min_
         self._max = max_
 
-        self._lower = self._true
-        self._upper = self._true
+        self._lower = InInterval._true
+        self._upper = InInterval._true
 
         if min_ is not None:
             if type_ in [InInterval.LEFT_OPEN, InInterval.OPEN]:
@@ -67,7 +61,6 @@ class InInterval(Constraint):
                 self._upper = self._upper_exclusive
             else:
                 self._upper = self._upper_inclusive
-
 
     def is_valid(self, value):
         return self._lower(value) and self._upper(value)
@@ -84,17 +77,16 @@ class InInterval(Constraint):
     def _upper_exclusive(self, value):
         return self._max > value
 
-    def _true(self, value):
+    @staticmethod
+    def _true(value):
         return True
+
 
 class InSet(Constraint):
 
     def __init__(self, *args, **kwargs):
 
-        set_ = kwargs.pop('set_', None)
-
-        if len(args) > 0:
-            set_ = args[0]
+        set_ = load_arg(0, 'set_', *args, **kwargs)
 
         if not hasattr(set_, '__iter__'):
             set_ = (set_,)
